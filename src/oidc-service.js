@@ -177,7 +177,22 @@ export class OidcService {
     if (!this.config.privateJwk) {
       throw new Error("缺少必要設定：PRIVATE_JWK");
     }
-    return this.config.privateJwk;
+    return parsePrivateJwk(this.config.privateJwk);
+  }
+}
+
+function parsePrivateJwk(value) {
+  try {
+    const jwk = JSON.parse(value);
+    if (!jwk.kid) {
+      throw new Error("PRIVATE_JWK 必須包含 kid");
+    }
+    return jwk;
+  } catch (error) {
+    if (error.message === "PRIVATE_JWK 必須包含 kid") {
+      throw error;
+    }
+    throw new Error("PRIVATE_JWK 必須是有效的單行 JSON");
   }
 }
 

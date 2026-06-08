@@ -118,7 +118,7 @@ describe("OIDC 服務", () => {
 
     assert.equal(token.token_type, "Bearer");
     assert.equal(token.expires_in, 3600);
-    const claims = await verifyJwt(token.id_token, config.privateJwk);
+    const claims = await verifyJwt(token.id_token, JSON.parse(config.privateJwk));
     assert.equal(claims.iss, "https://sso.example.com");
     assert.equal(claims.aud, "openai-client");
     assert.equal(claims.email, "user@example.com");

@@ -10,17 +10,12 @@ export function loadConfig(env = {}) {
     throw new Error("ALLOWED_REDIRECT_URIS 至少需要一個 redirect_uri");
   }
 
-  const privateJwk = parsePrivateJwk(env.PRIVATE_JWK);
-  if (privateJwk && !privateJwk.kid) {
-    throw new Error("PRIVATE_JWK 必須包含 kid");
-  }
-
   return {
     issuer,
     clientId,
     clientSecret,
     redirectUris,
-    privateJwk,
+    privateJwk: optional(env.PRIVATE_JWK),
     adminToken: optional(env.ADMIN_TOKEN),
     authorizationCodeTtlSeconds: Number(env.AUTHORIZATION_CODE_TTL_SECONDS ?? 300),
     tokenTtlSeconds: Number(env.TOKEN_TTL_SECONDS ?? 3600)
@@ -45,17 +40,5 @@ function requiredUrl(value, name) {
     return new URL(normalized).toString();
   } catch {
     throw new Error(`${name} 必須是有效 URL`);
-  }
-}
-
-function parsePrivateJwk(value) {
-  const raw = optional(value);
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new Error("PRIVATE_JWK 必須是有效的單行 JSON");
   }
 }
