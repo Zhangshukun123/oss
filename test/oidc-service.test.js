@@ -97,6 +97,7 @@ describe("OIDC 服務", () => {
     const inviteService = new InviteService(store);
     const user = await inviteService.loginWithInvite({
       email: "user@example.com",
+      displayName: "Ada Lovelace",
       inviteCode: "JOIN"
     });
 
@@ -121,6 +122,8 @@ describe("OIDC 服務", () => {
     assert.equal(claims.iss, "https://sso.example.com");
     assert.equal(claims.aud, "openai-client");
     assert.equal(claims.email, "user@example.com");
+    assert.equal(claims.given_name, "Ada");
+    assert.equal(claims.family_name, "Lovelace");
     assert.equal(claims.nonce, "nonce-1");
 
     await assert.rejects(

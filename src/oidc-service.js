@@ -19,7 +19,18 @@ export class OidcService {
       id_token_signing_alg_values_supported: ["ES256"],
       scopes_supported: ["openid", "email", "profile"],
       token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
-      claims_supported: ["sub", "iss", "aud", "exp", "iat", "email", "email_verified", "name"]
+      claims_supported: [
+        "sub",
+        "iss",
+        "aud",
+        "exp",
+        "iat",
+        "email",
+        "email_verified",
+        "name",
+        "given_name",
+        "family_name"
+      ]
     };
   }
 
@@ -108,13 +119,16 @@ export class OidcService {
   }
 
   async createIdToken({ user, nonce }) {
+    const name = splitDisplayName(user.displayName, user.email);
     const claims = {
       iss: this.config.issuer,
       sub: user.email,
       aud: this.config.clientId,
       email: user.email,
       email_verified: true,
-      name: user.displayName
+      name: user.displayName,
+      given_name: name.givenName,
+      family_name: name.familyName
     };
     if (nonce) {
       claims.nonce = nonce;
@@ -146,13 +160,27 @@ export class OidcService {
     if (!user) {
       throw new Error("找不到使用者");
     }
+    const name = splitDisplayName(user.displayName, user.email);
     return {
       sub: user.email,
       email: user.email,
       email_verified: true,
-      name: user.displayName
+      name: user.displayName,
+      given_name: name.givenName,
+      family_name: name.familyName
     };
   }
+}
+
+function splitDisplayName(displayName, email) {
+  const fallback = email.split("@")[0];
+  const parts = String(displayName || fallback)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const givenName = parts[0] || fallback;
+  const familyName = parts.length > 1 ? parts.slice(1).join(" ") : givenName;
+  return { givenName, familyName };
 }
 
 async function verifyPkce(record, verifier) {
