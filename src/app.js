@@ -14,7 +14,7 @@ export function createApp({ store, config }) {
           return json(oidcService.getDiscoveryMetadata());
         }
         if (request.method === "GET" && url.pathname === "/jwks.json") {
-          return json({ keys: [await exportPublicJwk(config.privateJwk)] });
+          return json({ keys: [await exportPublicJwk(requirePrivateJwk(config))] });
         }
         if (request.method === "GET" && url.pathname === "/authorize") {
           return handleAuthorize(url, oidcService);
@@ -116,7 +116,7 @@ async function handleUserInfo(request, oidcService, config) {
   if (!match) {
     return json({ error: "缺少 Bearer token" }, { status: 401 });
   }
-  const claims = await verifyJwt(match[1], config.privateJwk);
+  const claims = await verifyJwt(match[1], requirePrivateJwk(config));
   const info = await oidcService.getUserInfo(claims.email);
   return json(info);
 }
@@ -158,6 +158,13 @@ function isAdmin(request, config) {
   const authorization = request.headers.get("authorization") ?? "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   return Boolean(match && timingSafeEqual(match[1], config.adminToken));
+}
+
+function requirePrivateJwk(config) {
+  if (!config.privateJwk) {
+    throw new Error("缺少必要設定：PRIVATE_JWK");
+  }
+  return config.privateJwk;
 }
 
 function renderLoginPage(request) {

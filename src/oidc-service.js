@@ -119,6 +119,7 @@ export class OidcService {
   }
 
   async createIdToken({ user, nonce }) {
+    const privateJwk = this.requirePrivateJwk();
     const name = splitDisplayName(user.displayName, user.email);
     const claims = {
       iss: this.config.issuer,
@@ -134,7 +135,7 @@ export class OidcService {
       claims.nonce = nonce;
     }
     return signJwt({
-      privateJwk: this.config.privateJwk,
+      privateJwk,
       claims,
       now: this.now,
       ttlSeconds: this.config.tokenTtlSeconds
@@ -142,8 +143,9 @@ export class OidcService {
   }
 
   async createAccessToken(user) {
+    const privateJwk = this.requirePrivateJwk();
     return signJwt({
-      privateJwk: this.config.privateJwk,
+      privateJwk,
       claims: {
         iss: this.config.issuer,
         sub: user.email,
@@ -169,6 +171,13 @@ export class OidcService {
       given_name: name.givenName,
       family_name: name.familyName
     };
+  }
+
+  requirePrivateJwk() {
+    if (!this.config.privateJwk) {
+      throw new Error("缺少必要設定：PRIVATE_JWK");
+    }
+    return this.config.privateJwk;
   }
 }
 

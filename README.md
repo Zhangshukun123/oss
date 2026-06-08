@@ -49,13 +49,15 @@ pnpm wrangler secret put OIDC_CLIENT_SECRET
 pnpm wrangler secret put ADMIN_TOKEN
 ```
 
-非機密設定可放在 Cloudflare Workers 的變數中：
+非機密設定已放在 `wrangler.toml` 的 `[vars]` 中，使用 GitHub 或 Cloudflare 網頁版部署時會一起生效：
 
 - `ISSUER`
 - `OIDC_CLIENT_ID`
 - `ALLOWED_REDIRECT_URIS`
 - `AUTHORIZATION_CODE_TTL_SECONDS`
 - `TOKEN_TTL_SECONDS`
+
+`ADMIN_TOKEN` 只在需要使用 `/admin/invite-codes` API 時才需要設定，建議作為 Workers secret 保存。若不設定，仍可直接在 D1 Console 用 SQL 建立邀請碼。
 
 ## 建立邀請碼
 

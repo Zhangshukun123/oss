@@ -1,6 +1,13 @@
-name = "openai-oidc-sso"
+name = "sso"
 main = "src/index.js"
 compatibility_date = "2026-06-08"
+
+[vars]
+ISSUER = "https://sso.gakiyukr.workers.dev"
+OIDC_CLIENT_ID = "openai-sso"
+ALLOWED_REDIRECT_URIS = "https://external.auth.openai.com/sso/oidc/E21LYI91ffJj8kf4jRyyuqCy/callback"
+AUTHORIZATION_CODE_TTL_SECONDS = "300"
+TOKEN_TTL_SECONDS = "3600"
 
 [[d1_databases]]
 binding = "DB"
