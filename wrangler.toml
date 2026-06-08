@@ -3,7 +3,7 @@ main = "src/index.js"
 compatibility_date = "2026-06-08"
 
 [vars]
-ISSUER = "https://auth.itc.nekopost.top"
+ISSUER = "https://auth.itc.989567.xyz"
 OIDC_CLIENT_ID = "openai-sso"
 ALLOWED_REDIRECT_URIS = "https://external.auth.openai.com/sso/oidc/rcNbLoDUwTBJQD5fvqOl6T2Q4/callback"
 AUTHORIZATION_CODE_TTL_SECONDS = "300"
