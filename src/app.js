@@ -2,9 +2,12 @@ import { exportPublicJwk, timingSafeEqual, verifyJwt } from "./crypto.js";
 import { InviteService } from "./invite-service.js";
 import { OidcService } from "./oidc-service.js";
 
-export function createApp({ store, config }) {
+const TURNSTILE_SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
+export function createApp({ store, config, turnstileFetch = fetch }) {
   const inviteService = new InviteService(store);
   const oidcService = new OidcService({ store, config });
+  const turnstileService = new TurnstileService({ config, turnstileFetch });
 
   return {
     async fetch(request) {
@@ -13,6 +16,9 @@ export function createApp({ store, config }) {
         if (request.method === "GET" && url.pathname === "/.well-known/openid-configuration") {
           return json(oidcService.getDiscoveryMetadata());
         }
+        if (request.method === "GET" && url.pathname === "/") {
+          return handleDirectLogin(oidcService, config);
+        }
         if (request.method === "GET" && url.pathname === "/jwks.json") {
           return json(
             { keys: [await exportPublicJwk(requirePrivateJwk(config))] },
@@ -20,16 +26,16 @@ export function createApp({ store, config }) {
           );
         }
         if (request.method === "GET" && url.pathname === "/authorize") {
-          return handleAuthorize(url, oidcService);
+          return handleAuthorize(url, oidcService, config);
         }
         if (request.method === "GET" && url.pathname === "/register") {
-          return handleRegisterPage(url, oidcService);
+          return handleRegisterPage(url, oidcService, config);
         }
         if (request.method === "POST" && url.pathname === "/login") {
           return await handleLogin(request, inviteService, oidcService);
         }
         if (request.method === "POST" && url.pathname === "/register") {
-          return await handleRegister(request, inviteService, oidcService);
+          return await handleRegister(request, inviteService, oidcService, turnstileService);
         }
         if (request.method === "POST" && url.pathname === "/token") {
           return await handleToken(request, oidcService);
@@ -52,14 +58,28 @@ export function createApp({ store, config }) {
   };
 }
 
-function handleAuthorize(url, oidcService) {
+function handleAuthorize(url, oidcService, config) {
   const authRequest = oidcService.validateAuthorizeRequest(url.searchParams);
-  return html(renderLoginPage(authRequest));
+  return html(renderLoginPage(authRequest, config));
 }
 
-function handleRegisterPage(url, oidcService) {
+function handleDirectLogin(oidcService, config) {
+  const authRequest = oidcService.validateAuthorizeRequest(buildDefaultAuthorizeParams(config));
+  return html(renderLoginPage(authRequest, config));
+}
+
+function handleRegisterPage(url, oidcService, config) {
   const authRequest = oidcService.validateAuthorizeRequest(url.searchParams);
-  return html(renderRegisterPage(authRequest));
+  return html(renderRegisterPage(authRequest, config));
+}
+
+function buildDefaultAuthorizeParams(config) {
+  return new URLSearchParams({
+    client_id: config.clientId,
+    redirect_uri: config.redirectUris[0],
+    response_type: "code",
+    scope: "openid email profile"
+  });
 }
 
 async function handleLogin(request, inviteService, oidcService) {
@@ -69,8 +89,9 @@ async function handleLogin(request, inviteService, oidcService) {
   return issueAuthorizationCode({ user, authRequest, oidcService });
 }
 
-async function handleRegister(request, inviteService, oidcService) {
+async function handleRegister(request, inviteService, oidcService, turnstileService) {
   const { form, authRequest } = await parseLoginForm(request, oidcService);
+  await turnstileService.verifyRegistration(request, form);
   const user = await inviteService.registerWithInvite({
     account: String(form.get("account") ?? ""),
     inviteCode: String(form.get("invite_code") ?? "")
@@ -218,7 +239,55 @@ function parsePrivateJwk(value) {
   }
 }
 
-function renderLoginPage(request) {
+class TurnstileService {
+  constructor({ config, turnstileFetch }) {
+    this.config = config;
+    this.turnstileFetch = turnstileFetch;
+  }
+
+  async verifyRegistration(request, form) {
+    if (!this.config.turnstileSiteKey && !this.config.turnstileSecretKey) {
+      return;
+    }
+    if (!this.config.turnstileSiteKey) {
+      throw new Error("缺少必要設定：TURNSTILE_SITE_KEY");
+    }
+    if (!this.config.turnstileSecretKey) {
+      throw new Error("缺少必要設定：TURNSTILE_SECRET_KEY");
+    }
+    const token = String(form.get("cf-turnstile-response") ?? "").trim();
+    if (!token) {
+      throw new Error("請先完成 Cloudflare 人機驗證");
+    }
+
+    const body = new FormData();
+    body.set("secret", this.config.turnstileSecretKey);
+    body.set("response", token);
+    const remoteIp = getClientIp(request);
+    if (remoteIp) {
+      body.set("remoteip", remoteIp);
+    }
+
+    const response = await this.turnstileFetch(TURNSTILE_SITEVERIFY_URL, {
+      method: "POST",
+      body
+    });
+    if (!response.ok) {
+      throw new Error("Cloudflare 人機驗證暫時不可用，請稍後再試");
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error("Cloudflare 人機驗證失敗，請重新驗證後再試");
+    }
+  }
+}
+
+function getClientIp(request) {
+  return request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for") ?? "";
+}
+
+function renderLoginPage(request, config) {
   return renderAuthPage({
     title: "OpenAI SSO 登入",
     lead: "請輸入帳號登入。帳號會使用固定信箱域名。",
@@ -228,11 +297,12 @@ function renderLoginPage(request) {
     switchText: "還沒有帳號？",
     switchLabel: "前往註冊",
     switchHref: buildAuthLink("/register", request),
-    hiddenFields: toHiddenFields(request)
+    hiddenFields: toHiddenFields(request),
+    turnstileSiteKey: ""
   });
 }
 
-function renderRegisterPage(request) {
+function renderRegisterPage(request, config) {
   return renderAuthPage({
     title: "OpenAI SSO 註冊",
     lead: "請輸入帳號與邀請碼。註冊成功後會直接登入。",
@@ -242,7 +312,8 @@ function renderRegisterPage(request) {
     switchText: "已有帳號？",
     switchLabel: "返回登入",
     switchHref: buildAuthLink("/authorize", request),
-    hiddenFields: toHiddenFields(request)
+    hiddenFields: toHiddenFields(request),
+    turnstileSiteKey: config.turnstileSiteKey
   });
 }
 
@@ -255,7 +326,8 @@ function renderAuthPage({
   switchText,
   switchLabel,
   switchHref,
-  hiddenFields
+  hiddenFields,
+  turnstileSiteKey
 }) {
   return `<!doctype html>
 <html lang="zh-Hant">
@@ -383,18 +455,9 @@ function renderAuthPage({
       transform: translateY(0);
     }
 
-    .turnstile-placeholder {
-      display: grid;
-      place-items: center;
-      min-height: 72px;
+    .turnstile-widget {
+      min-height: 65px;
       margin: 18px 0 14px;
-      border: 1px dashed var(--input-border);
-      border-radius: 8px;
-      background: #f8fafc;
-      color: var(--text-muted);
-      font-size: 13px;
-      font-weight: 500;
-      text-align: center;
     }
 
     .hint {
@@ -436,11 +499,12 @@ function renderAuthPage({
       </label>`
         )
         .join("")}
-      ${renderTurnstilePlaceholder()}
+      ${renderTurnstile(turnstileSiteKey)}
       <button type="submit">${escapeHtml(buttonText)}</button>
     </form>
     <p class="hint">${escapeHtml(switchText)} <a href="${escapeHtml(switchHref)}">${escapeHtml(switchLabel)}</a></p>
   </main>
+  ${renderTurnstileScript(turnstileSiteKey)}
 </body>
 </html>`;
 }
@@ -455,10 +519,18 @@ function renderAccountField(field) {
         </label>`;
 }
 
-function renderTurnstilePlaceholder() {
-  return `<div class="turnstile-placeholder cf-turnstile" aria-label="Cloudflare 人機驗證">
-        Cloudflare 人機驗證
-      </div>`;
+function renderTurnstile(siteKey) {
+  if (!siteKey) {
+    return "";
+  }
+  return `<div class="turnstile-widget cf-turnstile" data-sitekey="${escapeHtml(siteKey)}" data-action="register"></div>`;
+}
+
+function renderTurnstileScript(siteKey) {
+  if (!siteKey) {
+    return "";
+  }
+  return `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`;
 }
 
 function renderHiddenFields(hiddenFields) {

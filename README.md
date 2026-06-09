@@ -48,6 +48,7 @@ node -e "crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,
 pnpm wrangler secret put PRIVATE_JWK
 pnpm wrangler secret put OIDC_CLIENT_SECRET
 pnpm wrangler secret put ADMIN_TOKEN
+pnpm wrangler secret put TURNSTILE_SECRET_KEY
 ```
 
 非機密設定已放在 `wrangler.toml` 的 `[vars]` 中，使用 GitHub 或 Cloudflare 網頁版部署時會一起生效：
@@ -57,13 +58,26 @@ pnpm wrangler secret put ADMIN_TOKEN
 - `ALLOWED_REDIRECT_URIS`
 - `AUTHORIZATION_CODE_TTL_SECONDS`
 - `TOKEN_TTL_SECONDS`
+- `TURNSTILE_SITE_KEY`
 
 `ADMIN_TOKEN` 只在需要使用 `/admin/invite-codes` API 時才需要設定，建議作為 Workers secret 保存。若不設定，仍可直接在 D1 Console 用 SQL 建立邀請碼。
+
+## Cloudflare Turnstile
+
+註冊頁支援 Cloudflare Turnstile 人機驗證。`TURNSTILE_SITE_KEY` 是前端公開值，已放在 `wrangler.toml`；`TURNSTILE_SECRET_KEY` 是後端驗證用密鑰，必須設為 Workers secret。
+
+在 Cloudflare 網頁版部署時，請到 Workers 的 **Settings → Variables and Secrets**：
+
+- `TURNSTILE_SITE_KEY`：選擇一般變量，填入 Turnstile widget 的 Site Key。
+- `TURNSTILE_SECRET_KEY`：選擇 Secret，填入 Turnstile widget 的 Secret Key。
+
+若完全不設定 Turnstile 變量，系統會停用人機驗證；若只設定其中一個變量，註冊會因缺少必要設定而失敗。正式使用請務必同時設定 `TURNSTILE_SITE_KEY` 與 `TURNSTILE_SECRET_KEY`。啟用後，只有註冊新帳號需要通過 Turnstile，既有帳號登入不需要驗證。
 
 ## 登入與註冊
 
 OpenAI 仍使用 `/authorize` 作為 authorization endpoint。使用者進入 `/authorize` 後會看到登入頁；若需要建立新帳號，從登入頁點選註冊連結進入 `/register`，OIDC 參數會自動保留。
 
+- 直接入口：訪問 `https://你的網域/` 會使用 `OIDC_CLIENT_ID` 與 `ALLOWED_REDIRECT_URIS` 的第一個 callback 自動生成登入流程，登入成功後會直接跳回 OpenAI callback。
 - 登入頁：只輸入帳號，例如 `neko`。系統會使用 `neko@itc.989567.xyz` 登入。
 - 註冊頁：輸入帳號與邀請碼。註冊成功後會直接完成 OIDC 登入。
 

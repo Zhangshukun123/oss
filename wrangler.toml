@@ -8,6 +8,7 @@ OIDC_CLIENT_ID = "openai-sso"
 ALLOWED_REDIRECT_URIS = "https://external.auth.openai.com/sso/oidc/rcNbLoDUwTBJQD5fvqOl6T2Q4/callback"
 AUTHORIZATION_CODE_TTL_SECONDS = "300"
 TOKEN_TTL_SECONDS = "3600"
+TURNSTILE_SITE_KEY = "0x4AAAAAADhHJf3LLn2rA8VY"
 
 [[d1_databases]]
 binding = "DB"

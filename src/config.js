@@ -17,6 +17,8 @@ export function loadConfig(env = {}) {
     redirectUris,
     privateJwk: optional(env.PRIVATE_JWK),
     adminToken: optional(env.ADMIN_TOKEN),
+    turnstileSiteKey: optional(env.TURNSTILE_SITE_KEY),
+    turnstileSecretKey: optional(env.TURNSTILE_SECRET_KEY),
     authorizationCodeTtlSeconds: Number(env.AUTHORIZATION_CODE_TTL_SECONDS ?? 300),
     tokenTtlSeconds: Number(env.TOKEN_TTL_SECONDS ?? 3600)
   };

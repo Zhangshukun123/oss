@@ -24,7 +24,7 @@ before(async () => {
   privateJwk.use = "sig";
 });
 
-function createTestApp() {
+function createTestApp(envOverrides = {}, appOptions = {}) {
   const store = new MemoryStore();
   const config = loadConfig({
     ISSUER: "https://sso.example.com",
@@ -32,12 +32,57 @@ function createTestApp() {
     OIDC_CLIENT_SECRET: "secret",
     ALLOWED_REDIRECT_URIS: "https://auth.openai.com/oidc/callback",
     PRIVATE_JWK: JSON.stringify(privateJwk),
-    ADMIN_TOKEN: "admin-token"
+    ADMIN_TOKEN: "admin-token",
+    ...envOverrides
   });
-  return { store, app: createApp({ store, config }) };
+  return { store, config, app: createApp({ store, config, ...appOptions }) };
 }
 
 describe("Worker HTTP 端點", () => {
+  it("/ 會顯示可直接登入 OpenAI 的表單", async () => {
+    const { app } = createTestApp();
+    const response = await app.fetch(new Request("https://sso.example.com/"));
+
+    const html = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(html, /OpenAI SSO 登入/);
+    assert.match(html, /name="client_id" value="openai-client"/);
+    assert.match(html, /name="redirect_uri" value="https:\/\/auth.openai.com\/oidc\/callback"/);
+    assert.match(html, /name="response_type" value="code"/);
+    assert.match(html, /name="scope" value="openid email profile"/);
+    assert.match(html, /href="\/register\?client_id=openai-client/);
+  });
+
+  it("/ 直接登入既有帳號後會導向 OpenAI callback", async () => {
+    const { store, app } = createTestApp();
+    await store.createInviteCode({ code: "JOIN", maxUses: 1 });
+    await store.createUserWithInvite({
+      email: "member@itc.989567.xyz",
+      displayName: "Neko Maau",
+      inviteCode: "JOIN"
+    });
+    const body = new URLSearchParams({
+      account: "member",
+      client_id: "openai-client",
+      redirect_uri: "https://auth.openai.com/oidc/callback",
+      response_type: "code",
+      scope: "openid email profile"
+    });
+
+    const response = await app.fetch(
+      new Request("https://sso.example.com/login", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body
+      })
+    );
+
+    assert.equal(response.status, 302);
+    const location = new URL(response.headers.get("location"));
+    assert.equal(location.origin + location.pathname, "https://auth.openai.com/oidc/callback");
+    assert.ok(location.searchParams.get("code"));
+  });
+
   it("/authorize 會顯示登入表單", async () => {
     const { app } = createTestApp();
     const response = await app.fetch(
@@ -53,15 +98,16 @@ describe("Worker HTTP 端點", () => {
     assert.match(html, /account-field/);
     assert.match(html, /account-domain/);
     assert.match(html, /@itc\.989567\.xyz/);
-    assert.match(html, /turnstile-placeholder/);
-    assert.match(html, /cf-turnstile/);
-    assert.match(html, /Cloudflare 人機驗證/);
+    assert.doesNotMatch(html, /cf-turnstile/);
+    assert.doesNotMatch(html, /Cloudflare 人機驗證/);
     assert.doesNotMatch(html, /邀請碼/);
     assert.doesNotMatch(html, /@itc\.@itc\.989567\.xyz/);
   });
 
   it("/register 會顯示獨立註冊表單", async () => {
-    const { app } = createTestApp();
+    const { app } = createTestApp({
+      TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
+    });
     const response = await app.fetch(
       new Request(
         "https://sso.example.com/register?client_id=openai-client&redirect_uri=https%3A%2F%2Fauth.openai.com%2Foidc%2Fcallback&response_type=code&scope=openid%20email&state=abc"
@@ -76,10 +122,171 @@ describe("Worker HTTP 端點", () => {
     assert.match(html, /account-field/);
     assert.match(html, /account-domain/);
     assert.match(html, /@itc\.989567\.xyz/);
-    assert.match(html, /turnstile-placeholder/);
     assert.match(html, /cf-turnstile/);
-    assert.match(html, /Cloudflare 人機驗證/);
+    assert.match(html, /data-sitekey="1x00000000000000000000AA"/);
+    assert.match(html, /data-action="register"/);
+    assert.match(html, /https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js/);
     assert.doesNotMatch(html, /@itc\.@itc\.989567\.xyz/);
+  });
+
+  it("/register 啟用 Turnstile 後缺少 token 會拒絕建立帳號", async () => {
+    const { store, app } = createTestApp(
+      {
+        TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
+        TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA"
+      },
+      {
+        turnstileFetch() {
+          throw new Error("缺少 token 時不應呼叫 Siteverify");
+        }
+      }
+    );
+    await store.createInviteCode({ code: "JOIN", maxUses: 100 });
+    const body = new URLSearchParams({
+      account: "user",
+      invite_code: "JOIN",
+      client_id: "openai-client",
+      redirect_uri: "https://auth.openai.com/oidc/callback",
+      scope: "openid email"
+    });
+    const originalConsoleError = console.error;
+    console.error = () => {};
+
+    const response = await app.fetch(
+      new Request("https://sso.example.com/register", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body
+      })
+    ).finally(() => {
+      console.error = originalConsoleError;
+    });
+    const html = await response.text();
+
+    assert.equal(response.status, 400);
+    assert.match(html, /請先完成 Cloudflare 人機驗證/);
+    assert.equal(await store.getUserByEmail("user@itc.989567.xyz"), null);
+    assert.equal((await store.getInviteCode("JOIN")).usedCount, 0);
+  });
+
+  it("/register 只設定 Turnstile site key 時會拒絕註冊", async () => {
+    const { store, app } = createTestApp({
+      TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
+    });
+    await store.createInviteCode({ code: "JOIN", maxUses: 100 });
+    const body = new URLSearchParams({
+      account: "user",
+      invite_code: "JOIN",
+      "cf-turnstile-response": "token",
+      client_id: "openai-client",
+      redirect_uri: "https://auth.openai.com/oidc/callback",
+      scope: "openid email"
+    });
+    const originalConsoleError = console.error;
+    console.error = () => {};
+
+    const response = await app.fetch(
+      new Request("https://sso.example.com/register", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body
+      })
+    ).finally(() => {
+      console.error = originalConsoleError;
+    });
+    const html = await response.text();
+
+    assert.equal(response.status, 400);
+    assert.match(html, /缺少必要設定：TURNSTILE_SECRET_KEY/);
+    assert.equal(await store.getUserByEmail("user@itc.989567.xyz"), null);
+    assert.equal((await store.getInviteCode("JOIN")).usedCount, 0);
+  });
+
+  it("/register 會用 Turnstile token 通過驗證後才建立帳號", async () => {
+    const calls = [];
+    const { store, app } = createTestApp(
+      {
+        TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
+        TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA"
+      },
+      {
+        turnstileFetch(url, init) {
+          calls.push({ url, init });
+          return Response.json({ success: true });
+        }
+      }
+    );
+    await store.createInviteCode({ code: "JOIN", maxUses: 100 });
+    const body = new URLSearchParams({
+      account: "user",
+      invite_code: "JOIN",
+      "cf-turnstile-response": "valid-token",
+      client_id: "openai-client",
+      redirect_uri: "https://auth.openai.com/oidc/callback",
+      scope: "openid email",
+      state: "state-1"
+    });
+
+    const response = await app.fetch(
+      new Request("https://sso.example.com/register", {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "cf-connecting-ip": "203.0.113.10"
+        },
+        body
+      })
+    );
+
+    assert.equal(response.status, 302);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://challenges.cloudflare.com/turnstile/v0/siteverify");
+    assert.equal(calls[0].init.method, "POST");
+    assert.equal(calls[0].init.body.get("secret"), "1x0000000000000000000000000000000AA");
+    assert.equal(calls[0].init.body.get("response"), "valid-token");
+    assert.equal(calls[0].init.body.get("remoteip"), "203.0.113.10");
+    assert.ok(await store.getUserByEmail("user@itc.989567.xyz"));
+  });
+
+  it("/register 會拒絕未通過 Turnstile 的註冊", async () => {
+    const { store, app } = createTestApp(
+      {
+        TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
+        TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA"
+      },
+      {
+        turnstileFetch() {
+          return Response.json({ success: false, "error-codes": ["invalid-input-response"] });
+        }
+      }
+    );
+    await store.createInviteCode({ code: "JOIN", maxUses: 100 });
+    const body = new URLSearchParams({
+      account: "user",
+      invite_code: "JOIN",
+      "cf-turnstile-response": "bad-token",
+      client_id: "openai-client",
+      redirect_uri: "https://auth.openai.com/oidc/callback",
+      scope: "openid email"
+    });
+    const originalConsoleError = console.error;
+    console.error = () => {};
+
+    const response = await app.fetch(
+      new Request("https://sso.example.com/register", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body
+      })
+    ).finally(() => {
+      console.error = originalConsoleError;
+    });
+    const html = await response.text();
+
+    assert.equal(response.status, 400);
+    assert.match(html, /Cloudflare 人機驗證失敗/);
+    assert.equal(await store.getUserByEmail("user@itc.989567.xyz"), null);
+    assert.equal((await store.getInviteCode("JOIN")).usedCount, 0);
   });
 
   it("/register 註冊成功後會導回 redirect_uri 並帶上授權碼", async () => {
