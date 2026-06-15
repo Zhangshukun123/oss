@@ -1,15 +1,28 @@
-import { strict as assert } from "node:assert";
+﻿import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
 import worker from "../src/index.js";
 
 describe("Worker 入口設定", () => {
+  it("缺少帳號域名設定時會拋出設定錯誤", async () => {
+    assert.throws(
+      () =>
+        worker.fetch(new Request("https://sso.example.com/.well-known/openid-configuration"), {
+          ISSUER: "https://sso.example.com",
+          OIDC_CLIENT_ID: "openai-sso",
+          ALLOWED_REDIRECT_URIS: "https://external.auth.openai.com/sso/oidc/callback"
+        }),
+      /缺少必要設定：ACCOUNT_DOMAIN/
+    );
+  });
+
   it("discovery endpoint 不應因尚未設定私鑰而回傳 Cloudflare 1101", async () => {
     const response = await worker.fetch(
       new Request("https://sso.example.com/.well-known/openid-configuration"),
       {
         ISSUER: "https://sso.example.com",
         OIDC_CLIENT_ID: "openai-sso",
+        ACCOUNT_DOMAIN: "example.com",
         ALLOWED_REDIRECT_URIS: "https://external.auth.openai.com/sso/oidc/callback"
       }
     );
@@ -26,6 +39,7 @@ describe("Worker 入口設定", () => {
       {
         ISSUER: "https://sso.example.com",
         OIDC_CLIENT_ID: "openai-sso",
+        ACCOUNT_DOMAIN: "example.com",
         ALLOWED_REDIRECT_URIS: "https://external.auth.openai.com/sso/oidc/callback",
         PRIVATE_JWK: "not-json"
       }

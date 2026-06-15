@@ -1,6 +1,6 @@
 # Cloudflare Workers OpenAI OIDC SSO
 
-這是一個部署於 Cloudflare Workers 的 Custom OIDC SSO Provider，用於對接 OpenAI SSO。使用者登入時只輸入帳號；註冊新帳號時需要輸入邀請碼。系統會把帳號固定轉成 `@itc.989567.xyz` 信箱，邀請碼預設最多建立 100 個新帳號。已建立帳號之後仍可登入，不會再消耗邀請碼。
+這是一個部署於 Cloudflare Workers 的 Custom OIDC SSO Provider，用於對接 OpenAI SSO。使用者登入時只輸入帳號；註冊新帳號時需要輸入邀請碼。系統會把帳號固定轉成 `ACCOUNT_DOMAIN` 指定的信箱域名，邀請碼預設最多建立 100 個新帳號。已建立帳號之後仍可登入，不會再消耗邀請碼。
 
 ## 功能
 
@@ -19,11 +19,30 @@
 
 - Cloudflare 帳號，並啟用 Workers 與 D1。
 - 一個要給 OpenAI 使用的 HTTPS 網域，例如 `https://auth.example.com`。
+- 一個要作為使用者信箱尾綴的帳號域名，例如 `example.com`。
 - OpenAI SSO 後台提供的 callback URL 與 Tile URL。
 - 一組 OIDC Client ID / Client Secret。Client ID 會公開在設定中，Client Secret 必須放到 Workers Secret。
 - 一個 RS256 私鑰 JWK，供 `/jwks.json` 與 token 簽章使用。
 
-此專案的 Worker 入口是 `src/index.js`，設定檔是 `wrangler.toml`。程式碼會從 `env.DB` 讀取 D1，因此 D1 綁定名稱必須是 `DB`。
+此專案的 Worker 入口是 `src/index.js`。公開倉庫只提交 `wrangler.example.toml`，真實 `wrangler.toml` 只放在本機並已被 `.gitignore` 忽略。程式碼會從 `env.DB` 讀取 D1，因此 D1 綁定名稱必須是 `DB`。
+
+## 公開倉庫安全設定
+
+不要把真實 `wrangler.toml`、`.env`、Cloudflare token、OIDC secret、私鑰 JWK、D1 database ID、OpenAI callback URL 或任何私有網域設定提交到 GitHub。
+
+本機開發或使用 Wrangler CLI 時，先複製範例檔：
+
+```powershell
+Copy-Item wrangler.example.toml wrangler.toml
+```
+
+再把 `wrangler.toml` 裡的 D1 binding 占位值改成自己的資料庫設定。`wrangler.toml` 已在 `.gitignore` 中，正常 `git add .` 不會再加入它。正式環境變數請在 Cloudflare Dashboard 的 Variables and Secrets 裡維護，不要寫進 `wrangler.toml` 的 `[vars]`。
+
+若使用 Cloudflare 網頁版 Git 部署，請在 Cloudflare Dashboard 設定 Variables and Secrets 與 D1 綁定，不需要把真實變數提交到倉庫。想要之後仍能在 Cloudflare 介面看到內容的值，請選 Text；真正的密鑰、token 與私鑰才選 Secret。
+
+`wrangler.example.toml` 已設定 `keep_vars = true`。這個設定很重要：使用 `wrangler deploy` 時，Wrangler 不會用本地 `[vars]` 清空或覆蓋 Cloudflare Dashboard 裡已設定的 Variables。若你自己建立新的 `wrangler.toml`，也請保留 `keep_vars = true`。本倉庫預設不使用 `[vars]` 保存私有設定。
+
+`keep_vars = true` 只保護 Dashboard Variables，不代表會自動保留 D1 binding。正式部署仍必須在 Cloudflare Dashboard 或部署時使用的 Wrangler 設定中提供 `DB` 這個 D1 binding。
 
 ## OpenAI 設定
 
@@ -51,7 +70,7 @@ OpenAI 的實際 callback URL 以 OpenAI 後台顯示為準，並放入 `ALLOWED
 4. Database name 建議填 `openai_oidc_sso`。
 5. 建立後複製 `database_id`。
 
-把 `database_id` 填回 `wrangler.toml`：
+本機 CLI 部署時，把 `database_id` 填回本機 `wrangler.toml`。Cloudflare 網頁版部署時，請在 Worker 的 D1 bindings 設定同一個 database，binding 名稱必須是 `DB`。
 
 ```toml
 [[d1_databases]]
@@ -85,7 +104,7 @@ VALUES ('JOIN-2026', 100, 0, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
 ### 3. 連接 Git 倉庫
 
-1. 把已更新 `wrangler.toml` 的程式碼推到 GitHub 或 GitLab。
+1. 把程式碼推到 GitHub 或 GitLab。不要提交本機真實 `wrangler.toml`。
 2. 在 Cloudflare Dashboard 進入 **Workers & Pages**。
 3. 選擇 **Create application**，再選擇連接 Git repository 的部署方式。
 4. 選擇此專案倉庫與 production branch。
@@ -93,9 +112,11 @@ VALUES ('JOIN-2026', 100, 0, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
    - Root directory：如果倉庫根目錄就是此專案，留空。
    - Build command：留空，這個 Worker 不需要前端建置。
    - Deploy command：`npx wrangler deploy`。
-6. 建立後先完成下方「環境變數與 Secrets」設定，再重新部署。
+6. 建立後先完成下方「環境變數與 Secrets」以及 D1 binding 設定，再重新部署。
 
-Cloudflare Workers Builds 會在連接倉庫後使用 Wrangler 部署 Worker。此倉庫已提供 `wrangler.toml`，因此不要讓 Cloudflare 自動產生新的 Workers 設定檔。
+Cloudflare Workers Builds 會在連接倉庫後部署 Worker。公開倉庫不提交真實 `wrangler.toml`，因此請在 Cloudflare Dashboard 中維護正式環境的 runtime 變數、Secrets 與 D1 綁定。若部署命令使用 `npx wrangler deploy`，請確保部署時讀到的 Wrangler 設定包含 `keep_vars = true`，避免覆蓋 Dashboard 中的 Variables。
+
+若你使用 GitHub Actions 或 Cloudflare Builds 執行 `npx wrangler deploy`，部署時讀到的 Wrangler 設定應包含 `keep_vars = true` 與 `DB` D1 binding，但不要包含 `[vars]`。這樣每次推送只部署程式碼，不會把公開倉庫裡的占位值寫回 Cloudflare，也不會清空 Dashboard 裡的 Text 變數。
 
 ### 4. 綁定自訂網域
 
@@ -115,21 +136,32 @@ Cloudflare Dashboard 內請到 Worker 的 **Settings → Variables and Secrets**
 
 不要把 runtime 變數填到 **Settings → Build → Environment variables**。Build variables 只在 Cloudflare 建置階段可用，Worker 執行時讀不到。
 
-| 名稱 | 類型 | 必填 | 說明 |
+Cloudflare 的 Text 變數可以在 Dashboard 再次查看；Secret 儲存後不能再查看原值。若你需要日後能看回具體值，請設成 Text。Workers 程式讀取 Text 和 Secret 時一樣是 `env.變數名`，不需要改程式碼。
+
+| 名稱 | 建議類型 | 必填 | 說明 |
 | --- | --- | --- | --- |
 | `ISSUER` | Text | 是 | Worker 對外 URL，不要帶結尾斜線，例如 `https://auth.example.com`。 |
 | `OIDC_CLIENT_ID` | Text | 是 | OpenAI Custom OIDC 使用的 Client ID，例如 `openai-sso`。 |
 | `ALLOWED_REDIRECT_URIS` | Text | 是 | OpenAI 後台顯示的 callback URL。多個值用逗號分隔。 |
+| `ACCOUNT_DOMAIN` | Text | 是 | 使用者帳號的信箱域名，例如 `example.com`。使用者輸入 `neko` 時會變成 `neko@example.com`。 |
 | `OPENAI_LOGIN_URL` | Text | 建議 | 直接訪問 `/` 時要跳轉的 OpenAI SSO Tile URL。不能填 OpenAI callback URL。 |
-| `AUTHORIZATION_CODE_TTL_SECONDS` | Text | 否 | 授權碼有效秒數，預設 `300`。 |
-| `TOKEN_TTL_SECONDS` | Text | 否 | Access token 與 ID token 有效秒數，預設 `3600`。 |
+| `AUTHORIZATION_CODE_TTL_SECONDS` | Text 或省略 | 否 | 授權碼有效秒數，預設 `300`。 |
+| `TOKEN_TTL_SECONDS` | Text 或省略 | 否 | Access token 與 ID token 有效秒數，預設 `3600`。 |
 | `TURNSTILE_SITE_KEY` | Text | 否 | Cloudflare Turnstile 前端公開 Site Key。 |
 | `PRIVATE_JWK` | Secret | 是 | RS256 私鑰 JWK，必須是單行 JSON，且包含 `kid`。 |
 | `OIDC_CLIENT_SECRET` | Secret | 是 | OpenAI Custom OIDC 使用的 Client Secret。 |
 | `ADMIN_TOKEN` | Secret | 否 | 呼叫 `/admin/invite-codes` 建立邀請碼時使用。 |
 | `TURNSTILE_SECRET_KEY` | Secret | 否 | Cloudflare Turnstile 後端 Secret Key。設定 Site Key 時也必須設定它。 |
 
-`wrangler.toml` 的 `[vars]` 可作為範例，但正式部署時仍建議在 Cloudflare Dashboard 確認 runtime 變數是否已正確套用。
+`wrangler.example.toml` 不保存 `[vars]`，避免公開倉庫或自動部署把占位值同步到 Cloudflare。正式部署時請在 Cloudflare Dashboard 確認 runtime 變數是否已正確套用。
+
+若你想在本機保留一份可查看的設定備份，可以複製 `.env.example` 為 `.env`：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+`.env` 已被 `.gitignore` 忽略，不會提交到 GitHub。注意：`.env` 只是本機備份或本地開發用，不會自動同步到 Cloudflare Dashboard；正式值仍以 Cloudflare Dashboard 為準。
 
 ## 產生 RS256 私鑰 JWK
 
@@ -164,10 +196,10 @@ pnpm wrangler secret put TURNSTILE_SECRET_KEY
 OpenAI 使用 `/authorize` 作為 authorization endpoint。使用者進入 `/authorize` 後會看到登入頁；若需要建立新帳號，從登入頁點選註冊連結進入 `/register`，OIDC 參數會自動保留。
 
 - 直接入口：訪問 `https://你的網域/` 會跳轉到 `OPENAI_LOGIN_URL`。這必須填 OpenAI SSO 設定頁提供的 Tile URL，例如 `https://chatgpt.com/auth/login?sso=true&connection=conn_...`。不能直接跳 OpenAI callback，否則 OpenAI 端沒有先建立 SSO session，會出現 `client_id_not_found_in_session`。
-- 登入頁：只輸入帳號，例如 `neko`。系統會使用 `neko@itc.989567.xyz` 登入。
+- 登入頁：只輸入帳號，例如 `neko`。系統會使用 `neko@ACCOUNT_DOMAIN` 登入。
 - 註冊頁：輸入帳號與邀請碼。註冊成功後會直接完成 OIDC 登入。
 
-若使用者輸入完整信箱 `neko@itc.989567.xyz`，系統會自動視為帳號 `neko`。其他信箱域名會被拒絕。
+若使用者輸入完整信箱，例如 `neko@example.com`，系統只接受尾綴符合 `ACCOUNT_DOMAIN` 的地址。其他信箱域名會被拒絕。
 
 ## 建立邀請碼
 
@@ -208,6 +240,7 @@ ON CONFLICT(code) DO UPDATE SET
 
 ```powershell
 pnpm install
+Copy-Item wrangler.example.toml wrangler.toml
 pnpm wrangler d1 create openai_oidc_sso
 ```
 

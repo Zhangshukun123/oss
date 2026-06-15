@@ -15,6 +15,7 @@ export function loadConfig(env = {}) {
     clientId,
     clientSecret,
     redirectUris,
+    accountDomain: requiredDomain(env.ACCOUNT_DOMAIN, "ACCOUNT_DOMAIN"),
     openaiLoginUrl: optionalUrl(env.OPENAI_LOGIN_URL, "OPENAI_LOGIN_URL"),
     privateJwk: optional(env.PRIVATE_JWK),
     adminToken: optional(env.ADMIN_TOKEN),
@@ -56,4 +57,12 @@ function optionalUrl(value, name) {
   } catch {
     throw new Error(`${name} 必須是有效 URL`);
   }
+}
+
+function requiredDomain(value, name) {
+  const normalized = required(value, name).toLowerCase().replace(/^@+/, "").replace(/\.+$/, "");
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(normalized)) {
+    throw new Error(`${name} 必須是有效域名`);
+  }
+  return normalized;
 }

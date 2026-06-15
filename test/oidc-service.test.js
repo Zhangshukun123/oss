@@ -1,4 +1,4 @@
-import { strict as assert } from "node:assert";
+﻿import { strict as assert } from "node:assert";
 import { before, describe, it } from "node:test";
 
 import { loadConfig } from "../src/config.js";
@@ -33,6 +33,7 @@ function createService() {
     OIDC_CLIENT_ID: "openai-client",
     OIDC_CLIENT_SECRET: "secret",
     ALLOWED_REDIRECT_URIS: "https://auth.openai.com/oidc/callback",
+    ACCOUNT_DOMAIN: "example.com",
     PRIVATE_JWK: JSON.stringify(privateJwk),
     ADMIN_TOKEN: "admin"
   });
@@ -102,9 +103,9 @@ describe("OIDC 服務", () => {
   it("有效授權碼可以交換 id_token 並且只能使用一次", async () => {
     const { store, service, config } = createService();
     await store.createInviteCode({ code: "JOIN", maxUses: 100 });
-    const inviteService = new InviteService(store);
+    const inviteService = new InviteService(store, { accountDomain: config.accountDomain });
     const user = await inviteService.loginWithInvite({
-      email: "user@itc.989567.xyz",
+      email: "user@example.com",
       inviteCode: "JOIN"
     });
 
@@ -128,7 +129,7 @@ describe("OIDC 服務", () => {
     const claims = await verifyJwt(token.id_token, JSON.parse(config.privateJwk));
     assert.equal(claims.iss, "https://sso.example.com");
     assert.equal(claims.aud, "openai-client");
-    assert.equal(claims.email, "user@itc.989567.xyz");
+    assert.equal(claims.email, "user@example.com");
     assert.equal(claims.given_name, "Neko");
     assert.equal(claims.family_name, "Maau");
     assert.equal(claims.nonce, "nonce-1");
@@ -146,10 +147,10 @@ describe("OIDC 服務", () => {
   });
 
   it("錯誤 client secret 會被拒絕", async () => {
-    const { store, service } = createService();
+    const { store, service, config } = createService();
     await store.createInviteCode({ code: "JOIN", maxUses: 100 });
-    const user = await new InviteService(store).loginWithInvite({
-      email: "user@itc.989567.xyz",
+    const user = await new InviteService(store, { accountDomain: config.accountDomain }).loginWithInvite({
+      email: "user@example.com",
       inviteCode: "JOIN"
     });
     const authCode = await service.createAuthorizationCode({

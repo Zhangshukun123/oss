@@ -5,7 +5,7 @@ import { OidcService } from "./oidc-service.js";
 const TURNSTILE_SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 export function createApp({ store, config, turnstileFetch = (...args) => globalThis.fetch(...args) }) {
-  const inviteService = new InviteService(store);
+  const inviteService = new InviteService(store, { accountDomain: config.accountDomain });
   const oidcService = new OidcService({ store, config });
   const turnstileService = new TurnstileService({ config, turnstileFetch });
 
@@ -287,7 +287,7 @@ function renderLoginPage(request, config) {
     lead: "請輸入帳號登入。帳號會使用固定信箱域名。",
     formAction: "/login",
     buttonText: "登入",
-    fields: accountFields(),
+    fields: accountFields(config.accountDomain),
     switchText: "還沒有帳號？",
     switchLabel: "前往註冊",
     switchHref: buildAuthLink("/register", request),
@@ -303,7 +303,10 @@ function renderRegisterPage(request, config) {
     lead: "請輸入帳號與邀請碼。註冊成功後會直接登入。",
     formAction: "/register",
     buttonText: "註冊並登入",
-    fields: [...accountFields(), { label: "邀請碼", name: "invite_code", autocomplete: "one-time-code" }],
+    fields: [
+      ...accountFields(config.accountDomain),
+      { label: "邀請碼", name: "invite_code", autocomplete: "one-time-code" }
+    ],
     switchText: "已有帳號？",
     switchLabel: "返回登入",
     switchHref: buildAuthLink("/authorize", request),
@@ -506,12 +509,12 @@ function renderAuthPage({
 </html>`;
 }
 
-function accountFields() {
-  return [{ type: "account", label: "帳號", name: "account", autocomplete: "username" }];
+function accountFields(accountDomain) {
+  return [{ type: "account", label: "帳號", name: "account", autocomplete: "username", accountDomain }];
 }
 
 function renderAccountField(field) {
-  return `<label class="account-field">${escapeHtml(field.label)}<span class="account-domain">@itc.989567.xyz</span>
+  return `<label class="account-field">${escapeHtml(field.label)}<span class="account-domain">@${escapeHtml(field.accountDomain)}</span>
           <input name="${escapeHtml(field.name)}" autocomplete="${escapeHtml(field.autocomplete)}" required>
         </label>`;
 }

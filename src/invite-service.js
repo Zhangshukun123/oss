@@ -1,14 +1,13 @@
 import { normalizeEmail, normalizeInviteCode } from "./store.js";
 
-const ACCOUNT_DOMAIN = "itc.989567.xyz";
-
 export class InviteService {
-  constructor(store) {
+  constructor(store, { accountDomain } = {}) {
     this.store = store;
+    this.accountDomain = normalizeAccountDomain(accountDomain);
   }
 
   async login({ account }) {
-    const normalizedEmail = normalizeAccountEmail(account);
+    const normalizedEmail = normalizeAccountEmail(account, this.accountDomain);
     const existingUser = await this.store.getUserByEmail(normalizedEmail);
     if (!existingUser) {
       throw new Error("帳號不存在，請先註冊");
@@ -19,7 +18,7 @@ export class InviteService {
   }
 
   async registerWithInvite({ account, displayName, inviteCode }) {
-    const normalizedEmail = normalizeAccountEmail(account);
+    const normalizedEmail = normalizeAccountEmail(account, this.accountDomain);
     const existingUser = await this.store.getUserByEmail(normalizedEmail);
     if (existingUser) {
       const user = await this.store.updateUserLogin(normalizedEmail);
@@ -39,19 +38,28 @@ export class InviteService {
   }
 }
 
-export function normalizeAccountEmail(account) {
+export function normalizeAccountEmail(account, accountDomain) {
+  const normalizedDomain = normalizeAccountDomain(accountDomain);
   const normalized = String(account ?? "").trim().toLowerCase();
   if (!normalized) {
     throw new Error("請輸入帳號");
   }
   if (normalized.includes("@")) {
-    if (!normalized.endsWith(`@${ACCOUNT_DOMAIN}`)) {
-      throw new Error(`只能使用 @${ACCOUNT_DOMAIN} 帳號`);
+    if (!normalized.endsWith(`@${normalizedDomain}`)) {
+      throw new Error(`只能使用 @${normalizedDomain} 帳號`);
     }
     return normalizeEmail(normalized);
   }
   if (!/^[a-z0-9._+-]+$/.test(normalized)) {
     throw new Error("帳號只能包含英文字母、數字、點、底線、加號與連字號");
   }
-  return normalizeEmail(`${normalized}@${ACCOUNT_DOMAIN}`);
+  return normalizeEmail(`${normalized}@${normalizedDomain}`);
+}
+
+function normalizeAccountDomain(accountDomain) {
+  const normalized = String(accountDomain ?? "").trim().toLowerCase().replace(/^@+/, "").replace(/\.+$/, "");
+  if (!normalized) {
+    throw new Error("缺少必要設定：ACCOUNT_DOMAIN");
+  }
+  return normalized;
 }

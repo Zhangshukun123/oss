@@ -1,4 +1,4 @@
-import { strict as assert } from "node:assert";
+﻿import { strict as assert } from "node:assert";
 import { before, describe, it } from "node:test";
 
 import { createApp } from "../src/app.js";
@@ -31,6 +31,7 @@ function createTestApp(envOverrides = {}, appOptions = {}) {
     OIDC_CLIENT_ID: "openai-client",
     OIDC_CLIENT_SECRET: "secret",
     ALLOWED_REDIRECT_URIS: "https://auth.openai.com/oidc/callback",
+    ACCOUNT_DOMAIN: "example.com",
     OPENAI_LOGIN_URL: "https://chatgpt.com/auth/login?sso=true&connection=conn_test",
     PRIVATE_JWK: JSON.stringify(privateJwk),
     ADMIN_TOKEN: "admin-token",
@@ -90,12 +91,28 @@ describe("Worker HTTP 端點", () => {
     assert.match(html, /註冊/);
     assert.match(html, /account-field/);
     assert.match(html, /account-domain/);
-    assert.match(html, /@itc\.989567\.xyz/);
+    assert.match(html, /@example\.com/);
     assert.match(html, /cf-turnstile/);
     assert.match(html, /data-sitekey="1x00000000000000000000AA"/);
     assert.match(html, /data-action="login"/);
     assert.doesNotMatch(html, /邀請碼/);
-    assert.doesNotMatch(html, /@itc\.@itc\.989567\.xyz/);
+    assert.doesNotMatch(html, /@example\.@example\.com/);
+  });
+
+  it("/authorize 會顯示設定的帳號域名", async () => {
+    const { app } = createTestApp({
+      ACCOUNT_DOMAIN: "team.example.org"
+    });
+    const response = await app.fetch(
+      new Request(
+        "https://sso.example.com/authorize?client_id=openai-client&redirect_uri=https%3A%2F%2Fauth.openai.com%2Foidc%2Fcallback&response_type=code&scope=openid%20email"
+      )
+    );
+
+    const html = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(html, /@team\.example\.org/);
+    assert.doesNotMatch(html, /@itc\.989567\.xyz/);
   });
 
   it("/login 啟用 Turnstile 後缺少 token 會拒絕登入", async () => {
@@ -112,7 +129,7 @@ describe("Worker HTTP 端點", () => {
     );
     await store.createInviteCode({ code: "JOIN", maxUses: 1 });
     await store.createUserWithInvite({
-      email: "member@itc.989567.xyz",
+      email: "member@example.com",
       displayName: "Neko Maau",
       inviteCode: "JOIN"
     });
@@ -156,7 +173,7 @@ describe("Worker HTTP 端點", () => {
     );
     await store.createInviteCode({ code: "JOIN", maxUses: 1 });
     await store.createUserWithInvite({
-      email: "member@itc.989567.xyz",
+      email: "member@example.com",
       displayName: "Neko Maau",
       inviteCode: "JOIN"
     });
@@ -201,7 +218,7 @@ describe("Worker HTTP 端點", () => {
         });
         await store.createInviteCode({ code: "JOIN", maxUses: 1 });
         await store.createUserWithInvite({
-          email: "member@itc.989567.xyz",
+          email: "member@example.com",
           displayName: "Neko Maau",
           inviteCode: "JOIN"
         });
@@ -277,12 +294,12 @@ describe("Worker HTTP 端點", () => {
     assert.match(html, /返回登入/);
     assert.match(html, /account-field/);
     assert.match(html, /account-domain/);
-    assert.match(html, /@itc\.989567\.xyz/);
+    assert.match(html, /@example\.com/);
     assert.match(html, /cf-turnstile/);
     assert.match(html, /data-sitekey="1x00000000000000000000AA"/);
     assert.match(html, /data-action="register"/);
     assert.match(html, /https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js/);
-    assert.doesNotMatch(html, /@itc\.@itc\.989567\.xyz/);
+    assert.doesNotMatch(html, /@example\.@example\.com/);
   });
 
   it("/register 啟用 Turnstile 後缺少 token 會拒絕建立帳號", async () => {
@@ -321,7 +338,7 @@ describe("Worker HTTP 端點", () => {
 
     assert.equal(response.status, 400);
     assert.match(html, /請先完成 Cloudflare 人機驗證/);
-    assert.equal(await store.getUserByEmail("user@itc.989567.xyz"), null);
+    assert.equal(await store.getUserByEmail("user@example.com"), null);
     assert.equal((await store.getInviteCode("JOIN")).usedCount, 0);
   });
 
@@ -354,7 +371,7 @@ describe("Worker HTTP 端點", () => {
 
     assert.equal(response.status, 400);
     assert.match(html, /缺少必要設定：TURNSTILE_SECRET_KEY/);
-    assert.equal(await store.getUserByEmail("user@itc.989567.xyz"), null);
+    assert.equal(await store.getUserByEmail("user@example.com"), null);
     assert.equal((await store.getInviteCode("JOIN")).usedCount, 0);
   });
 
@@ -401,7 +418,7 @@ describe("Worker HTTP 端點", () => {
     assert.equal(calls[0].init.body.get("secret"), "1x0000000000000000000000000000000AA");
     assert.equal(calls[0].init.body.get("response"), "valid-token");
     assert.equal(calls[0].init.body.get("remoteip"), "203.0.113.10");
-    assert.ok(await store.getUserByEmail("user@itc.989567.xyz"));
+    assert.ok(await store.getUserByEmail("user@example.com"));
   });
 
   it("/register 會拒絕未通過 Turnstile 的註冊", async () => {
@@ -441,7 +458,7 @@ describe("Worker HTTP 端點", () => {
 
     assert.equal(response.status, 400);
     assert.match(html, /Cloudflare 人機驗證失敗/);
-    assert.equal(await store.getUserByEmail("user@itc.989567.xyz"), null);
+    assert.equal(await store.getUserByEmail("user@example.com"), null);
     assert.equal((await store.getInviteCode("JOIN")).usedCount, 0);
   });
 
@@ -476,13 +493,13 @@ describe("Worker HTTP 端點", () => {
     const { store, app } = createTestApp();
     await store.createInviteCode({ code: "JOIN", maxUses: 1 });
     await store.createUserWithInvite({
-      email: "member@itc.989567.xyz",
+      email: "member@example.com",
       displayName: "Neko Maau",
       inviteCode: "JOIN"
     });
     const body = new URLSearchParams({
       mode: "login",
-      account: "member@itc.989567.xyz",
+      account: "member@example.com",
       client_id: "openai-client",
       redirect_uri: "https://auth.openai.com/oidc/callback",
       scope: "openid email"
@@ -541,6 +558,7 @@ describe("Worker HTTP 端點", () => {
         OIDC_CLIENT_ID: "openai-client",
         OIDC_CLIENT_SECRET: "secret",
         ALLOWED_REDIRECT_URIS: "https://auth.openai.com/oidc/callback",
+        ACCOUNT_DOMAIN: "example.com",
         PRIVATE_JWK: JSON.stringify(privateJwk),
         ADMIN_TOKEN: "admin-token"
       })
