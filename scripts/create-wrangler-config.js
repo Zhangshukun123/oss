@@ -28,6 +28,7 @@ ACCOUNT_DOMAIN = "sub23ycy.top"
 ALLOWED_REDIRECT_URIS = "https://chatgpt.com/auth/login/callback"
 ISSUER = "https://oss.zhangshukun2026.workers.dev"
 OIDC_CLIENT_ID = "openai-sso"
+OPENAI_LOGIN_URL = "https://chatgpt.com/auth/login?sso=true&connection=conn_01KVCNH89KQV5A4SV725M3E1Q3"
 
 [[d1_databases]]
 binding = "DB"
