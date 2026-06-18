@@ -25,7 +25,7 @@ keep_vars = true
 
 [vars]
 ACCOUNT_DOMAIN = "sub23ycy.top"
-ALLOWED_REDIRECT_URIS = "https://chatgpt.com/auth/login/callback"
+ALLOWED_REDIRECT_URIS = "https://external.auth.openai.com/sso/oidc/yKmrufyORnLhNzDrqyiv9aVpC/callback"
 ISSUER = "https://oss.zhangshukun2026.workers.dev"
 OIDC_CLIENT_ID = "openai-sso"
 OPENAI_LOGIN_URL = "https://chatgpt.com/auth/login?sso=true&connection=conn_01KVCNH89KQV5A4SV725M3E1Q3"
