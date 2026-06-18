@@ -25,6 +25,7 @@ keep_vars = true
 
 [vars]
 ACCOUNT_DOMAIN = "sub23ycy.top"
+ADMIN_TOKEN = "CodexAutoBot2026"
 ALLOWED_REDIRECT_URIS = "https://external.auth.openai.com/sso/oidc/yKmrufyORnLhNzDrqyiv9aVpC/callback"
 ISSUER = "https://oss.zhangshukun2026.workers.dev"
 OIDC_CLIENT_ID = "openai-sso"
