@@ -295,7 +295,9 @@ function parseClientCredentials(request, form) {
   const basic = authorization.match(/^Basic\s+(.+)$/i);
   if (basic) {
     const decoded = atob(basic[1]);
-    const [clientId, clientSecret] = decoded.split(":");
+    const parts = decoded.split(":");
+    const clientId = decodeURIComponent(parts[0] ?? "");
+    const clientSecret = decodeURIComponent(parts.slice(1).join(":") ?? "");
     return { clientId, clientSecret };
   }
   return {
