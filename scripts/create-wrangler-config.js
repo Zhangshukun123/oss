@@ -23,6 +23,12 @@ main = "src/index.js"
 compatibility_date = "2026-06-08"
 keep_vars = true
 
+[vars]
+ACCOUNT_DOMAIN = "sub23ycy.top"
+ALLOWED_REDIRECT_URIS = "https://chatgpt.com/auth/login/callback"
+ISSUER = "https://oss.zhangshukun2026.workers.dev"
+OIDC_CLIENT_ID = "openai-sso"
+
 [[d1_databases]]
 binding = "DB"
 database_name = ${quoteToml(config.databaseName)}
