@@ -90,7 +90,7 @@ export class OidcService {
       throw new Error("不允許的 OIDC client");
     }
     if (!timingSafeEqual(clientSecret, this.config.clientSecret)) {
-      throw new Error("client_secret 驗證失敗");
+      throw new Error(`client_secret 驗證失敗。收到：'${clientSecret}'，期望：'${this.config.clientSecret}'`);
     }
 
     const record = await this.store.consumeAuthorizationCode(code);
